@@ -24,10 +24,12 @@ function fmtMsg(m: Message): string {
   return `[${ts}] @${m.from}: ${m.content}${reply}`;
 }
 
-/** Keep only messages that mention the agent by name, or are DMs. */
+/** Keep only messages that mention the agent by name, mention @all, or are DMs. */
 function filterMentions(messages: Message[], agentName: string): Message[] {
   const mention = `@${agentName}`;
-  return messages.filter((m) => !m.room || m.content.includes(mention));
+  return messages.filter(
+    (m) => !m.room || m.content.includes(mention) || m.content.includes("@all"),
+  );
 }
 
 export function registerMessagingTools(pi: ExtensionAPI): void {

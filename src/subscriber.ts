@@ -63,6 +63,8 @@ function isAddressedToAgent(msg: Message): boolean {
   if (!isRegistered()) return true; // not registered yet, accept all
   const identity = getIdentity();
   if (!msg.room) return true; // direct messages are always addressed
+  // Specific mention or @all broadcast
+  if (msg.content.includes("@all")) return true;
   const mention = `@${identity.name}`;
   return msg.content.includes(mention);
 }

@@ -12,6 +12,7 @@ import { assertValidToken, ensureDirectConsumer } from "../stream-manager.js";
 import { NATS_URL } from "../nats-client.js";
 import { resetWaitReturn } from "../wakeups.js";
 import { startDmSubscriber } from "../subscriber.js";
+import { loadConfig } from "../config.js";
 
 export function registerIdentityTools(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -23,6 +24,7 @@ export function registerIdentityTools(pi: ExtensionAPI): void {
       "Register, re-register, or rename this session as a named NATS agent",
     promptGuidelines: [
       "Call nats_register_agent first, before any other nats_* tool — most nats_* tools require registration.",
+      "On first registration, the configured name (NATS_AGENT_NAME env var or ~/.pi/agent/nats-chat.json) is used automatically; the name parameter you pass is only a fallback.",
       "You may call nats_register_agent again to change your name; it keeps your existing id and room memberships.",
     ],
     parameters: Type.Object({
@@ -33,7 +35,18 @@ export function registerIdentityTools(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, { name }, _signal, _onUpdate, _ctx) {
       assertValidToken("agent name", name);
-      const identity = await register(name);
+      // On first registration, prefer the configured name (env var or
+      // config file) over whatever the LLM guessed. Only during an
+      // explicit rename (re-registration) do we trust the parameter.
+      let effectiveName = name;
+      if (!isRegistered()) {
+        const cfg = loadConfig();
+        const configuredName = process.env.NATS_AGENT_NAME || cfg.agentName;
+        if (configuredName) {
+          effectiveName = configuredName;
+        }
+      }
+      const identity = await register(effectiveName);
       // Clear any prior per-identity wait cooldown so a re-registering session
       // starts clean.
       resetWaitReturn(identity.id);
@@ -46,7 +59,8 @@ export function registerIdentityTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: `Registered as @${identity.name} (id: ${identity.id.slice(0, 12)}…)`,
+            text: `Registered as @${identity.name} (id: ${identity.id.slice(0, 12)}…)` +
+          (effectiveName !== name ? ` (using configured name "${effectiveName}" instead of "${name}")` : ""),
           },
         ],
         details: { identity },

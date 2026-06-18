@@ -101,7 +101,7 @@ async function ensureStream(name: string, subjects: string[]): Promise<void> {
 
 async function getPresenceKv(): Promise<KV> {
   if (presenceKv) return presenceKv;
-  presenceKv = await Bucket.bind(getJetStream(), PRESENCE_KV, {
+  presenceKv = await Bucket.create(getJetStream(), PRESENCE_KV, {
     history: 1,
     ttl: PRESENCE_TTL_MS,
   });
