@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.js.map
+
+# Environment & secrets — NEVER commit these
+.envrc
+.env
+.env.*
+!.env.example
+
+# Local identity / runtime state
+.claude/nats-mcp-identity.json
+
+# Personal/local Claude Code settings (shared settings.json is committed)
+.claude/settings.local.json
+
+# Test & coverage output
+coverage/
+*.lcov
+.nyc_output/
+
+# SonarQube scanner working files
+.scannerwork/
+.sonar/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+*.swp

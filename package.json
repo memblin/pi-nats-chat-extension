@@ -1,0 +1,17 @@
+{
+  "name": "pi-nats-chat",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi extension for NATS-based inter-agent chat (rooms, DMs, presence)",
+  "dependencies": {
+    "@nats-io/jetstream": "^3.4.0",
+    "@nats-io/kv": "^3.4.0",
+    "@nats-io/nats-core": "^3.4.0",
+    "@nats-io/transport-node": "^3.4.0"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  }
+}
