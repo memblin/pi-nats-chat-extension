@@ -22,7 +22,7 @@ import {
   startPushConsumer,
   type BackgroundConsumer,
 } from "./stream-manager.js";
-import { getIdentity, isRegistered, syncPresence } from "./identity.js";
+import { getIdentity, getRooms, isRegistered, syncPresence } from "./identity.js";
 import { resetEmptyWakeups } from "./wakeups.js";
 import type { Message } from "./types.js";
 
@@ -52,6 +52,22 @@ function formatMessageForInjection(msg: Message): string {
 }
 
 /**
+ * Whether a message is addressed to this agent. A message is "addressed" if:
+ * - It contains "@agentName" (the registered display name), or
+ * - It is a direct message (no room set).
+ *
+ * Unaddressed room chatter is displayed silently without triggering a turn,
+ * so the agent isn't distracted by background conversation.
+ */
+function isAddressedToAgent(msg: Message): boolean {
+  if (!isRegistered()) return true; // not registered yet, accept all
+  const identity = getIdentity();
+  if (!msg.room) return true; // direct messages are always addressed
+  const mention = `@${identity.name}`;
+  return msg.content.includes(mention);
+}
+
+/**
  * Callback invoked by push consumers when a message arrives. Injects it into
  * the Pi conversation as a user message so the agent responds.
  */
@@ -75,9 +91,17 @@ function onMessage(msg: Message): void {
       display: true,
       details: { msg },
     });
-  } else {
-    // Real messages trigger a turn so the agent responds
+  } else if (isAddressedToAgent(msg)) {
+    // Addressed messages trigger a turn so the agent responds
     pi.sendUserMessage(text, { deliverAs: "steer" });
+  } else {
+    // Unaddressed room chatter — display silently, no turn triggered
+    pi.sendMessage({
+      customType: "nats-chat",
+      content: text,
+      display: true,
+      details: { msg },
+    });
   }
 }
 

@@ -52,7 +52,12 @@ export function isConnected(): boolean {
 /** Drain and tear down the connection (used on session shutdown). */
 export async function closeNats(): Promise<void> {
   if (!nc) return;
-  await nc.drain();
+  try {
+    await nc.drain();
+  } catch {
+    // Drain fails if the connection is already dead — that's fine,
+    // we still want to clear our handle so reconnect can start fresh.
+  }
   nc = null;
   js = null;
   jsm = null;

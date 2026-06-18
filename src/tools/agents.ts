@@ -27,17 +27,16 @@ export function registerAgentsTools(pi: ExtensionAPI): void {
         is_self: agent.id === selfId,
       }));
 
+      const lines = mapped.length === 0
+        ? ["No agents registered."]
+        : mapped.map((a) => {
+            const self = a.is_self ? " (you)" : "";
+            const rooms = a.rooms.length > 0 ? a.rooms.map((r) => `#${r}`).join(", ") : "no rooms";
+            const seen = a.last_seen.slice(11, 19);
+            return `@${a.name}${self} [${seen}] ${rooms}`;
+          });
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              { count: mapped.length, agents: mapped },
-              null,
-              2,
-            ),
-          },
-        ],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     },
   });

@@ -46,11 +46,7 @@ export function registerIdentityTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              { registered: true, identity, nats_url: NATS_URL },
-              null,
-              2,
-            ),
+            text: `Registered as @${identity.name} (id: ${identity.id.slice(0, 12)}…)`,
           },
         ],
         details: { identity },
@@ -71,34 +67,19 @@ export function registerIdentityTools(pi: ExtensionAPI): void {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  registered: false,
-                  nats_url: NATS_URL,
-                  hint: "Call nats_register_agent to set this session's name.",
-                },
-                null,
-                2,
-              ),
+              text: "Not registered. Call nats_register_agent to set this session's name.",
             },
           ],
         };
       }
       await syncPresence();
+      const identity = getIdentity();
+      const rooms = getRooms();
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                registered: true,
-                identity: getIdentity(),
-                rooms: getRooms(),
-                nats_url: NATS_URL,
-              },
-              null,
-              2,
-            ),
+            text: `@${identity.name} (id: ${identity.id.slice(0, 12)}…) — rooms: [${rooms.join(", ") || "none"}]`,
           },
         ],
       };

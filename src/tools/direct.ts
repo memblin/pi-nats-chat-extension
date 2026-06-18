@@ -81,15 +81,7 @@ export function registerDirectTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                sent: true,
-                to: { id: target.id, name: target.name },
-                message,
-              },
-              null,
-              2,
-            ),
+            text: `DM → @${target.name}: ${content}`,
           },
         ],
         details: { message, target },
@@ -137,16 +129,7 @@ export function registerDirectTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                delivered: true,
-                to: target.id,
-                regarding,
-                timestamp: ack.timestamp,
-              },
-              null,
-              2,
-            ),
+            text: `ack → @${target.name}: ${status} re: ${regarding}`,
           },
         ],
         details: { ack, target },
@@ -166,17 +149,11 @@ export function registerDirectTools(pi: ExtensionAPI): void {
       if (messages.length > 0) resetEmptyWakeups(getIdentity().id);
       await syncPresence();
 
+      const lines = messages.length === 0
+        ? ["No new direct messages."]
+        : [`${messages.length} DM${messages.length === 1 ? "" : "s"}:`, ...messages.map((m) => `  @${m.from}: ${m.content}`)];
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              { count: messages.length, messages },
-              null,
-              2,
-            ),
-          },
-        ],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     },
   });

@@ -1,6 +1,7 @@
 // Messaging tools: nats_send_message, nats_check_messages, nats_get_history
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { Message } from "../types.js";
 import {
   getIdentity,
   getRooms,
@@ -15,6 +16,19 @@ import {
   getRoomHistory,
 } from "../stream-manager.js";
 import { resetEmptyWakeups } from "../wakeups.js";
+
+/** Format a single message as a clean one-liner. */
+function fmtMsg(m: Message): string {
+  const ts = m.timestamp.slice(11, 19); // HH:MM:SS
+  const reply = m.reply_to ? ` (↳ ${m.reply_to.slice(0, 8)})` : "";
+  return `[${ts}] @${m.from}: ${m.content}${reply}`;
+}
+
+/** Keep only messages that mention the agent by name, or are DMs. */
+function filterMentions(messages: Message[], agentName: string): Message[] {
+  const mention = `@${agentName}`;
+  return messages.filter((m) => !m.room || m.content.includes(mention));
+}
 
 export function registerMessagingTools(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -51,7 +65,7 @@ export function registerMessagingTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ sent: true, message }, null, 2),
+            text: `Sent to #${room}: ${content}`,
           },
         ],
         details: { message },
@@ -86,20 +100,15 @@ export function registerMessagingTools(pi: ExtensionAPI): void {
             `You are not a member of room "${room}". Use nats_join_room first.`,
           );
         }
-        const messages = await fetchRoomMessages(identity.id, room);
+        const raw = await fetchRoomMessages(identity.id, room);
+        const messages = filterMentions(raw, identity.name);
         if (messages.length > 0) resetEmptyWakeups(identity.id);
         await syncPresence();
+        const lines = messages.length === 0
+          ? [`No new messages in #${room}.`]
+          : [`#${room} (${messages.length} message${messages.length === 1 ? "" : "s"}):`, ...messages.map(fmtMsg)];
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { rooms_checked: [room], messages, count: messages.length },
-                null,
-                2,
-              ),
-            },
-          ],
+          content: [{ type: "text", text: lines.join("\n") }],
         };
       }
 
@@ -110,44 +119,26 @@ export function registerMessagingTools(pi: ExtensionAPI): void {
           content: [
             {
               type: "text",
-              text: JSON.stringify(
-                {
-                  rooms_checked: [],
-                  messages: [],
-                  count: 0,
-                  hint: "You have not joined any rooms. Use nats_join_room to join a room first.",
-                },
-                null,
-                2,
-              ),
+              text: "No rooms joined. Use nats_join_room to join a room first.",
             },
           ],
         };
       }
 
-      const allMessages = [];
+      const allRaw = [];
       for (const r of rooms) {
         const msgs = await fetchRoomMessages(identity.id, r);
-        allMessages.push(...msgs);
+        allRaw.push(...msgs);
       }
-      if (allMessages.length > 0) resetEmptyWakeups(identity.id);
+      const messages = filterMentions(allRaw, identity.name);
+      if (messages.length > 0) resetEmptyWakeups(identity.id);
 
       await syncPresence();
+      const lines = messages.length === 0
+        ? ["No new messages across joined rooms."]
+        : [`${messages.length} message${messages.length === 1 ? "" : "s"}:`, ...messages.map(fmtMsg)];
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                rooms_checked: rooms,
-                messages: allMessages,
-                count: allMessages.length,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     },
   });
@@ -170,17 +161,11 @@ export function registerMessagingTools(pi: ExtensionAPI): void {
     async execute(_toolCallId, { room, limit }, _signal, _onUpdate, _ctx) {
       assertValidToken("room name", room);
       const messages = await getRoomHistory(room, limit ?? 50);
+      const lines = messages.length === 0
+        ? [`No history in #${room}.`]
+        : [`#${room} last ${messages.length} message${messages.length === 1 ? "" : "s"}:`, ...messages.map(fmtMsg)];
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              { room, count: messages.length, messages },
-              null,
-              2,
-            ),
-          },
-        ],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     },
   });

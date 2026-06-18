@@ -10,6 +10,7 @@
 // when chat traffic arrives.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { Message } from "../types.js";
 import {
   getIdentity,
   getRooms,
@@ -60,13 +61,14 @@ export function registerWaitTools(pi: ExtensionAPI): void {
       // Per-identity cooldown gate
       const decision = decideWaitCooldown(identity.id);
       if (decision.action === "replay" || decision.action === "reject") {
+        // decision.payload is already a plain object; format it briefly
+        const p = decision.payload as Record<string, unknown>;
+        const lines = [
+          decision.action === "replay" ? "[cooldown — replaying previous result]" : "[cooldown — wait rejected]",
+          `elapsed_ms=${p.elapsed_ms}, empty_wakeups=${p.consecutive_empty_wakeups}`,
+        ];
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(decision.payload, null, 2),
-            },
-          ],
+          content: [{ type: "text", text: lines.join("\n") }],
         };
       }
 
@@ -106,17 +108,19 @@ export function registerWaitTools(pi: ExtensionAPI): void {
         },
       );
 
+      const roomLines = result.room_messages.length > 0
+        ? ["", "Room messages:", ...result.room_messages.map((m: Message) => `  [#${m.room}] @${m.from}: ${m.content}`)]
+        : [];
+      const dmLines = result.direct_messages.length > 0
+        ? ["", "Direct messages:", ...result.direct_messages.map((m: Message) => `  @${m.from}: ${m.content}`)]
+        : [];
+      const status = result.timed_out
+        ? `Timed out after ${result.elapsed_ms}ms (${result.consecutive_empty_wakeups} empty wakeups)`
+        : `Woke after ${result.elapsed_ms}ms`;
+      const coalesced = leader ? "" : " [coalesced]";
+      const lines = [`${status}${coalesced}`, ...roomLines, ...dmLines];
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              leader ? result : { ...result, coalesced: true },
-              null,
-              2,
-            ),
-          },
-        ],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     },
   });

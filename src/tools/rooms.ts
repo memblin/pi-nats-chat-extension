@@ -42,11 +42,7 @@ export function registerRoomTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              { joined: true, room, rooms: getRooms() },
-              null,
-              2,
-            ),
+            text: `Joined #${room}. Your rooms: [${getRooms().join(", ")}]`,
           },
         ],
         details: { room },
@@ -72,11 +68,7 @@ export function registerRoomTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              { left: true, room, rooms: getRooms() },
-              null,
-              2,
-            ),
+            text: `Left #${room}. Your rooms: [${getRooms().join(", ")}]`,
           },
         ],
         details: { room },
@@ -112,13 +104,14 @@ export function registerRoomTools(pi: ExtensionAPI): void {
           member_count: members.length,
         }));
 
+      const lines = rooms.length === 0
+        ? ["No active rooms."]
+        : rooms.map((r) => {
+            const members = r.members.map((m) => `@${m.name}`).join(", ");
+            return `#${r.room} (${r.member_count}): ${members}`;
+          });
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ rooms }, null, 2),
-          },
-        ],
+        content: [{ type: "text", text: lines.join("\n") }],
       };
     },
   });

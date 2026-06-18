@@ -63,6 +63,7 @@ Or add it to Pi's environment. The extension reads it at connect time.
 
 | Command | Description |
 |---------|-------------|
+| `/nats-config` | Show or update agent name, auto-join rooms (stored in `~/.pi/agent/nats-chat.json`) |
 | `/nats-reconnect` | Reconnect to NATS and restart background monitoring |
 
 ## Comparison with nats-chat-mcp
