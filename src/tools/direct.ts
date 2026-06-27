@@ -25,6 +25,9 @@ const ACK_STATUSES: readonly [AckStatus, ...AckStatus[]] = [
   "complete",
 ];
 
+/** Shape of an agent id: "a" + a UUID with its dashes stripped (see identity.ts). */
+const AGENT_ID_RE = /^a[0-9a-f]{32}$/;
+
 /**
  * Resolve a `to` argument (a name or an id) to a single registered agent.
  */
@@ -33,6 +36,13 @@ async function resolveTarget(to: string): Promise<AgentPresence> {
   const matches = agents.filter((a) => a.id === to || a.name === to);
 
   if (matches.length === 0) {
+    // Presence lives on a 5-min TTL, but the recipient's durable DM consumer
+    // persists for days — so an exact agent id still addresses a target whose
+    // presence has merely lapsed (mid-long-task, briefly idle). The DM lands on
+    // chat.direct.<id>.msg and waits for them.
+    if (AGENT_ID_RE.test(to)) {
+      return { id: to, name: to, rooms: [], last_seen: "" };
+    }
     throw new Error(
       `No registered agent matches "${to}". Use nats_list_agents to see available agents.`,
     );

@@ -61,11 +61,17 @@ export function registerWaitTools(pi: ExtensionAPI): void {
       // Per-identity cooldown gate
       const decision = decideWaitCooldown(identity.id);
       if (decision.action === "replay" || decision.action === "reject") {
-        // decision.payload is already a plain object; format it briefly
+        // decision.payload is already a plain object; format it briefly. The
+        // replay payload carries elapsed_ms (from the cached wait); the reject
+        // payload carries retry_after_ms instead — pick whichever applies.
         const p = decision.payload as Record<string, unknown>;
+        const timing =
+          decision.action === "replay"
+            ? `elapsed_ms=${p.elapsed_ms}`
+            : `retry_after_ms=${p.retry_after_ms}`;
         const lines = [
           decision.action === "replay" ? "[cooldown — replaying previous result]" : "[cooldown — wait rejected]",
-          `elapsed_ms=${p.elapsed_ms}, empty_wakeups=${p.consecutive_empty_wakeups}`,
+          `${timing}, empty_wakeups=${p.consecutive_empty_wakeups}`,
         ];
         return {
           content: [{ type: "text", text: lines.join("\n") }],

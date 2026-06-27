@@ -24,6 +24,7 @@ import {
 } from "./stream-manager.js";
 import { getIdentity, getRooms, isRegistered, syncPresence } from "./identity.js";
 import { resetEmptyWakeups } from "./wakeups.js";
+import { isMentioned } from "./mentions.js";
 import type { Message } from "./types.js";
 
 /** Active background consumers, keyed by their NATS durable name. */
@@ -34,6 +35,23 @@ let pi: ExtensionAPI | null = null;
 
 export function setPi(p: ExtensionAPI): void {
   pi = p;
+}
+
+/**
+ * Whether the "chat monitor" is on. When OFF (the default), unaddressed room
+ * chatter is suppressed entirely — only messages addressed to this agent
+ * (mentions / DMs / @all) and acks reach the session. When ON, unaddressed
+ * chatter is also printed to the session for a human to read (chat-console
+ * style), still WITHOUT triggering an agent turn or any token processing.
+ */
+let monitorEnabled = false;
+
+export function setMonitor(on: boolean): void {
+  monitorEnabled = on;
+}
+
+export function isMonitorEnabled(): boolean {
+  return monitorEnabled;
 }
 
 /**
@@ -63,10 +81,8 @@ function isAddressedToAgent(msg: Message): boolean {
   if (!isRegistered()) return true; // not registered yet, accept all
   const identity = getIdentity();
   if (!msg.room) return true; // direct messages are always addressed
-  // Specific mention or @all broadcast
-  if (msg.content.includes("@all")) return true;
-  const mention = `@${identity.name}`;
-  return msg.content.includes(mention);
+  // Specific @<name> mention or @all broadcast, token-aware (see mentions.ts).
+  return isMentioned(msg.content, identity.name);
 }
 
 /**
@@ -76,41 +92,50 @@ function isAddressedToAgent(msg: Message): boolean {
 function onMessage(msg: Message): void {
   if (!pi) return;
 
-  // Reset the empty-wakeup streak so wait_for_message sees activity too
-  const identity = isRegistered() ? getIdentity() : null;
-  if (identity) resetEmptyWakeups(identity.id);
-
-  // Keep presence fresh on receive
-  void syncPresence().catch(() => {});
-
   const text = formatMessageForInjection(msg);
 
+  // Side effects worth doing only for messages we actually surface/process:
+  // refresh presence and reset the wait_for_message empty-wakeup streak.
+  const surface = () => {
+    const identity = isRegistered() ? getIdentity() : null;
+    if (identity) resetEmptyWakeups(identity.id);
+    void syncPresence().catch(() => {});
+  };
+
   if (msg.type === "ack") {
-    // Acks are informational — send as custom message, don't interrupt
-    pi.sendMessage({
-      customType: "nats-chat",
-      content: text,
-      display: true,
-      details: { msg },
-    });
-  } else if (isAddressedToAgent(msg)) {
-    // Addressed messages trigger a turn so the agent responds
+    // Acks ride your DM subject (directed at you) — always shown, never a turn.
+    surface();
+    pi.sendMessage({ customType: "nats-chat", content: text, display: true, details: { msg } });
+    return;
+  }
+
+  if (isAddressedToAgent(msg)) {
+    // Mentions / DMs / @all — inject as a user message so the agent responds.
+    surface();
     pi.sendUserMessage(text, { deliverAs: "steer" });
-  } else {
-    // Unaddressed room chatter — display silently, no turn triggered
-    pi.sendMessage({
-      customType: "nats-chat",
-      content: text,
-      display: true,
-      details: { msg },
-    });
+    return;
+  }
+
+  // Unaddressed room chatter. Default: suppress entirely (no display, no token
+  // processing — the message is already acked on NATS by the consumer). With
+  // the monitor on, print it for a human to read, still without a turn.
+  if (monitorEnabled) {
+    surface();
+    pi.sendMessage({ customType: "nats-chat", content: text, display: true, details: { msg } });
   }
 }
 
 function onError(err: unknown): void {
-  if (pi?.events) {
-    pi.events.emit("nats:error", { error: err });
-  }
+  // Surface to the conversation so a struggling subscriber isn't silent. The
+  // push consumer auto-restarts (see startPushConsumer); this is visibility,
+  // not recovery. Displayed without triggering a turn.
+  if (!pi) return;
+  const detail = err instanceof Error ? err.message : String(err);
+  pi.sendMessage({
+    customType: "nats-chat",
+    content: `subscriber error (retrying): ${detail}`,
+    display: true,
+  });
 }
 
 // ---- DM subscriber ----

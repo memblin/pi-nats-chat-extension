@@ -108,9 +108,18 @@ async function getPresenceKv(): Promise<KV> {
   return presenceKv;
 }
 
-/** Drop the cached KV handle so it can't outlive a closed connection (tests). */
-export function resetStreamManagerForTests(): void {
+/**
+ * Drop cached JetStream handles (the presence KV) so they can't outlive a closed
+ * connection. Call after closeNats() and before reconnecting — otherwise the
+ * next presence read/write reuses a handle bound to the drained connection.
+ */
+export function resetInfrastructureCache(): void {
   presenceKv = null;
+}
+
+/** Test alias for {@link resetInfrastructureCache}. */
+export function resetStreamManagerForTests(): void {
+  resetInfrastructureCache();
 }
 
 // ---------------------------------------------------------------------------
@@ -374,22 +383,27 @@ export async function getRoomHistory(
   room: string,
   limit = 50,
 ): Promise<Message[]> {
+  // Tailing the last N of a single subject still requires a filtered scan
+  // (JetStream has no per-subject "last N" read), but we keep only the most
+  // recent `limit` in memory via a ring buffer rather than buffering the whole
+  // retained window and slicing.
   const consumer = await getJetStream().consumers.get(ROOM_STREAM, {
     filterSubjects: roomSubject(room),
   });
-  const out: Message[] = [];
+  const ring: Message[] = [];
   const batch = await consumer.fetch({
     max_messages: MESSAGE_MAX_PER_SUBJECT,
     expires: 1500,
   });
   for await (const msg of batch) {
     try {
-      out.push(msg.json<Message>());
+      ring.push(msg.json<Message>());
+      if (ring.length > limit) ring.shift();
     } catch {
       /* skip malformed payload */
     }
   }
-  return out.slice(-limit);
+  return ring;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,11 +417,15 @@ export interface BackgroundConsumer {
 
 /**
  * Open a continuous read on a durable consumer, calling `onMessage` for each
- * delivery. The callback receives the parsed Message plus the raw ack function
- * (the subscriber acks after the callback succeeds).
+ * delivery. A self-authored message (from_id === agentId) is still acked but
+ * NOT passed to the callback — otherwise the agent would see its own posts as
+ * incoming.
  *
- * A self-authored message (from_id === agentId) is still acked but NOT passed
- * to the callback — otherwise the agent would see its own posts as incoming.
+ * The read self-heals: if the `consume()` iterator throws (a connection blip)
+ * or ends unexpectedly (server-side consumer churn during a reconnect), it
+ * re-binds the durable consumer rather than going silently dark. Errors are
+ * still reported via `onError` for visibility, with capped exponential backoff
+ * so a persistent failure (e.g. a deleted consumer) can't spin hot.
  */
 export function startPushConsumer(
   stream: string,
@@ -419,33 +437,53 @@ export function startPushConsumer(
   let stopped = false;
   let sub: ConsumerMessages | null = null;
 
-  const run = (async () => {
-    if (stopped) return;
-    const consumer = await getJetStream().consumers.get(stream, durableName);
-    if (stopped) return;
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-    sub = await consumer.consume({ max_messages: 100 });
-    try {
-      for await (const msg of sub) {
-        if (stopped) break;
-        let parsed: Message | undefined;
-        try {
-          parsed = msg.json<Message>();
-        } catch {
-          msg.ack();
-          continue;
-        }
-        msg.ack();
-        if (parsed && parsed.from_id !== agentId) {
+  const run = (async () => {
+    let backoff = 1000;
+    while (!stopped) {
+      let hadError = false;
+      try {
+        const consumer = await getJetStream().consumers.get(
+          stream,
+          durableName,
+        );
+        if (stopped) return;
+        sub = await consumer.consume({ max_messages: 100 });
+        for await (const msg of sub) {
+          if (stopped) break;
+          let parsed: Message | undefined;
           try {
-            await onMessage(parsed);
-          } catch (err) {
-            onError?.(err);
+            parsed = msg.json<Message>();
+          } catch {
+            msg.ack();
+            continue;
+          }
+          msg.ack();
+          if (parsed && parsed.from_id !== agentId) {
+            try {
+              await onMessage(parsed);
+            } catch (err) {
+              onError?.(err);
+            }
           }
         }
+      } catch (err) {
+        if (stopped) return;
+        hadError = true;
+        onError?.(err);
       }
-    } catch (err) {
-      if (!stopped) onError?.(err);
+      if (stopped) return;
+      if (hadError) {
+        await sleep(backoff);
+        backoff = Math.min(backoff * 2, 30_000);
+      } else {
+        // Clean iterator end (not an error). Re-bind promptly but with a small
+        // pause so a repeatedly-ending iterator can't busy-loop.
+        backoff = 1000;
+        await sleep(500);
+      }
     }
   })();
 

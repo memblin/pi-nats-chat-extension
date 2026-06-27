@@ -1,17 +1,55 @@
 {
-  "name": "pi-nats-chat",
+  "name": "@memblin/pi-nats-chat",
   "version": "0.1.0",
   "private": true,
   "description": "Pi extension for NATS-based inter-agent chat (rooms, DMs, presence)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "nats",
+    "jetstream",
+    "multi-agent"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:memblin/pi-nats-chat-extension"
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@nats-io/jetstream": "^3.4.0",
     "@nats-io/kv": "^3.4.0",
     "@nats-io/nats-core": "^3.4.0",
     "@nats-io/transport-node": "^3.4.0"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": { "optional": true },
+    "@earendil-works/pi-tui": { "optional": true },
+    "@earendil-works/pi-ai": { "optional": true },
+    "typebox": { "optional": true }
+  },
   "pi": {
     "extensions": [
       "./index.ts"
+    ],
+    "skills": [
+      "./skills"
     ]
   }
 }

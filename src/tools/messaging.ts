@@ -16,6 +16,7 @@ import {
   getRoomHistory,
 } from "../stream-manager.js";
 import { resetEmptyWakeups } from "../wakeups.js";
+import { isMentioned } from "../mentions.js";
 
 /** Format a single message as a clean one-liner. */
 function fmtMsg(m: Message): string {
@@ -26,10 +27,7 @@ function fmtMsg(m: Message): string {
 
 /** Keep only messages that mention the agent by name, mention @all, or are DMs. */
 function filterMentions(messages: Message[], agentName: string): Message[] {
-  const mention = `@${agentName}`;
-  return messages.filter(
-    (m) => !m.room || m.content.includes(mention) || m.content.includes("@all"),
-  );
+  return messages.filter((m) => !m.room || isMentioned(m.content, agentName));
 }
 
 export function registerMessagingTools(pi: ExtensionAPI): void {
