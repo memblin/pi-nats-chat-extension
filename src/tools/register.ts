@@ -33,14 +33,14 @@ export function registerIdentityTools(pi: ExtensionAPI): void {
           "Short agent name, e.g. 'build-seat-1' or 'lead'. Use letters, digits, '_' or '-' only.",
       }),
     }),
-    async execute(_toolCallId, { name }, _signal, _onUpdate, _ctx) {
+    async execute(_toolCallId, { name }, _signal, _onUpdate, ctx) {
       assertValidToken("agent name", name);
       // On first registration, prefer the configured name (env var or
       // config file) over whatever the LLM guessed. Only during an
       // explicit rename (re-registration) do we trust the parameter.
       let effectiveName = name;
       if (!isRegistered()) {
-        const cfg = loadConfig();
+        const cfg = loadConfig(ctx?.cwd);
         const configuredName = process.env.NATS_AGENT_NAME || cfg.agentName;
         if (configuredName) {
           effectiveName = configuredName;

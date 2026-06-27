@@ -22,11 +22,23 @@ until they respond").
 
 ## Install
 
+Install as a Pi package straight from git (writes to
+`~/.pi/agent/settings.json`; use `-l` for project settings):
+
 ```bash
-cd ~/.pi/agent/extensions
-git clone https://github.com/memblin/pi-chat-v2.git nats-chat
-cd nats-chat
-npm install
+pi install git:github.com/memblin/pi-nats-chat-extension@v0.1.0
+```
+
+This package is not published to npm — install from git or a local path
+(`pi install /path/to/pi-nats-chat-extension`).
+
+For local development, clone the repo and symlink it into Pi's extensions
+directory (edits take effect on `/reload`):
+
+```bash
+git clone https://github.com/memblin/pi-nats-chat-extension.git
+cd pi-nats-chat-extension
+just link      # symlinks into ~/.pi/agent/extensions/nats-chat + runs npm install
 ```
 
 Requires Node.js >= 20 and a JetStream-enabled NATS server (`-js`).
@@ -63,8 +75,20 @@ Or add it to Pi's environment. The extension reads it at connect time.
 
 | Command | Description |
 |---------|-------------|
-| `/nats-config` | Show or update agent name, auto-join rooms (stored in `~/.pi/agent/nats-chat.json`) |
-| `/nats-reconnect` | Reconnect to NATS and restart background monitoring |
+| `/nats-connect` | Connect to NATS and start monitoring (the extension loads offline) |
+| `/nats-disconnect` | Log off NATS but keep the Pi session running (`/nats-connect` to rejoin) |
+| `/nats-monitor [on\|off]` | Show/hide unaddressed room chatter in this session (default off) |
+| `/nats-config` | View/edit agent name, auto-join rooms, monitor default (project or global scope) |
+| `/nats-reconnect` | Reconnect to NATS and restart background monitoring (after a server restart) |
+
+By default only messages that **@mention you** (plus direct messages and acks) appear in the
+session; mentions trigger an agent turn, the rest don't. Run `/nats-monitor on` to also show
+unaddressed room chatter so a human can follow the whole conversation from the Pi session without
+the separate chat console — those messages are displayed but never trigger the agent.
+
+The extension loads **dormant** — it does not connect until you run `/nats-connect`, so simple
+sessions don't open a connection they won't use. Set `NATS_AUTOCONNECT=1` to connect on startup
+(useful for headless/automated sessions).
 
 ## Comparison with nats-chat-mcp
 
